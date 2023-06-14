@@ -1,0 +1,103 @@
+'Programa para calibrar o Pluviometro
+'Faz a medida da vazao e da massa de cada basculada
+'Por Yoshi e Turma 2019-02
+'Data: novembro 2019
+
+Public balanca As String *50
+Public massa(4) As String
+Public vazao, pluv, t, IRm, IRr,IRrmed
+Public c,k, pp, I
+
+'Resolucao da Basculada e Area de captacao (diametro) do Pluviometro
+Const basc = 0.41 'basculada unidade em mm
+Const d = 0.1427 'diametro unidade em metro
+Const area = 3.1416*((d/2)^2) ' unidade m^2 
+
+' basc=0.16 RM Young, basc=0.25 Cinza(Epagri), basc=0.26 ADCOM-Telemetri, basc=0.41 Davis (preto) 
+' diam = 0.1387 Young     diam =0.1765 Cinza    diam = 0.1394  ADCON     diam = 0.1427 Davis
+'______________________________________________
+
+'basc=0.32  'diam = 0.176  'CI3000053
+
+Public flag(5)
+Dim SDMOUT(16)
+
+DataTable (Basculada,1,-1)
+DataEvent (0,pluv=basc,pluv=0,0)
+   Sample (1,c,FP2)
+   Sample (1,vazao,IEEE4)
+   Sample (1,t,IEEE4)
+   FieldNames("deltaT")
+   Sample (1,massa(2),IEEE4)
+	 FieldNames("massaT")
+	 Sample (1,IRm,IEEE4)
+	 Sample (1,IRr,IEEE4)
+	 Sample (1,IRrmed,IEEE4)
+EndTable
+
+DataTable (Peso,1,-1)
+	DataInterval (0,1,Sec,10)
+	Sample (1,c,IEEE4)
+  Sample (1,massa(2),IEEE4)
+	FieldNames("massaP")
+EndTable
+
+BeginProg
+  pp=120
+  c=0
+  k=1
+SequentialMode 
+    SerialOpen (Com3,9600,0,0,10000)   
+	 
+	  Scan (20,mSec,100000,0)
+	      
+    t=t+0.02
+    PulseCount (pluv,1,1 ,2,0,basc,0)
+    
+		If pluv=basc Then
+		IRm=3600*basc/t
+		CallTable Basculada
+		t=0
+		c=c+1
+		EndIf  
+
+   NextScan
+    
+  SlowSequence
+  
+    Scan (1,Sec,10000,0)
+
+    SerialIn (balanca,Com3,10,0,50)
+    SplitStr (massa,balanca," ",4,10)      
+    SerialFlush (Com3)   
+
+    If c>1 AND c<600 Then CallTable Peso
+
+    vazao = (Peso.massaP(1,1)-Peso.massaP(1,2))
+    IRr=3.6*vazao/area ' unidade em milimetros/hora [mm]
+    AvgRun (IRrmed,1,IRr,60)
+    
+'    If c=pp Then
+'    flag(k)=0
+'    pp=120+120*(k)
+'    k=k+1 
+'    flag(k)=1
+'    EndIf
+        
+  'Controle das valvulas
+    For I=1 To 5 Step 1   
+    If flag(I)=0 Then
+    SDMOUT(I)=1
+    Else
+    SDMOUT(I)=0
+    EndIf
+    Next    
+    
+    SDMCD16AC (SDMOUT(),1,0)
+
+    NextScan 
+    
+      
+EndProg
+
+
